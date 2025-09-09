@@ -5,6 +5,7 @@ fotoğraflara filigran ekleyebilen, Render platformunda 7/24 çalışmak üzere
 tasarlanmış bir içerik asistanıdır. Yapay zeka, KRBRZ VIP kanalının kimliğine
 uygun olarak, havalı bir Pro Gamer/Hacker gibi metinler üretmek üzere özel
 olarak eğitilmiştir.
+(Hedef kanal butonu hatası düzeltildi.)
 """
 
 # --- Gerekli Kütüphaneler ---
@@ -143,6 +144,7 @@ SETUP_MENU, GET_SOURCE, GET_DEST, GET_WATERMARK_TEXT = range(4)
 
 @admin_only
 async def setup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """/ayarla komutu ile sihirbazı başlatır ve ana menüyü gösterir."""
     ai_status = "✅ Aktif" if bot_config.get("ai_enhancement_enabled") else "❌ Pasif"
     wm_status = f"✅ Aktif ({bot_config['watermark']['text']})" if bot_config['watermark'].get('enabled') else "❌ Pasif"
     keyboard = [
@@ -155,25 +157,33 @@ async def setup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         [InlineKeyboardButton("✅ Sihirbazdan Çık", callback_data='exit_setup')],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Bot ayarlarını yönetin:", reply_markup=reply_markup)
+    
+    # Eğer bu bir komutla çağrıldıysa yeni mesaj gönder, butonla ise mesajı düzenle
+    if update.message:
+        await update.message.reply_text("Bot ayarlarını yönetin:", reply_markup=reply_markup)
+    elif update.callback_query:
+        await update.callback_query.edit_message_text("Bot ayarlarını yönetin:", reply_markup=reply_markup)
+        
     return SETUP_MENU
 
 async def setup_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Menüdeki butonlara basıldığında ilgili adıma yönlendirir."""
     query = update.callback_query
     await query.answer()
     data = query.data
     
     if data == 'set_source':
-        await query.edit_message_text("Eklenecek/çıkarılacak kaynak kanalı girin (@ile).")
+        current = ", ".join(bot_config['source_channels']) or "Yok"
+        await query.edit_message_text(f"Mevcut Kaynaklar: {current}\n\nŞimdi, bu mesaja cevap olarak, dinlenecek kaynak kanalın adını yazıp gönderin (@ile).")
         return GET_SOURCE
     elif data == 'set_dest':
-        await query.edit_message_text("Eklenecek/çıkarılacak hedef kanalı girin.")
+        current = ", ".join(bot_config['destination_channels']) or "Yok"
+        await query.edit_message_text(f"Mevcut Hedefler: {current}\n\nŞimdi, bu mesaja cevap olarak, gönderilerin yapılacağı hedef kanalın adını yazıp gönderin.")
         return GET_DEST
     elif data == 'toggle_ai':
         bot_config["ai_enhancement_enabled"] = not bot_config.get("ai_enhancement_enabled", False)
         save_config()
-        await setup_command(query, context)
-        return SETUP_MENU
+        return await setup_command(query, context) # Menüyü güncellemek için
     elif data == 'set_watermark':
         await query.edit_message_text("Yeni filigran metnini girin. Kapatmak için 'kapat' yazın.")
         return GET_WATERMARK_TEXT
@@ -183,6 +193,7 @@ async def setup_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return SETUP_MENU
 
 async def channel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, channel_type: str) -> int:
+    """Kullanıcıdan gelen kanal adını işler ve menüye geri döner."""
     channel = update.message.text.strip()
     config_key = f"{channel_type}_channels"
     if channel in bot_config[config_key]:
@@ -192,7 +203,7 @@ async def channel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, ch
         bot_config[config_key].append(channel)
         await update.message.reply_text(f"✅ {channel_type.capitalize()} eklendi: {channel}")
     save_config()
-    await setup_command(update, context)
+    await setup_command(update, context) # Yeni mesaj olarak menüyü gönder
     return ConversationHandler.END
     
 async def get_source_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -269,7 +280,7 @@ def main():
             GET_WATERMARK_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_watermark_text_handler)],
         },
         fallbacks=[CommandHandler("iptal", cancel_setup)],
-        per_message=False
+        per_message=False # Bu ayar önemli
     )
     
     application.add_handler(conv_handler)
