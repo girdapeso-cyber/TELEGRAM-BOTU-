@@ -1,5 +1,0 @@
-python-telegram-bot
-httpx<0.25.0
-Pillow
-Flask
-requests
