@@ -7,7 +7,7 @@ havalı bir Pro Gamer/Hacker gibi metinler üretmek üzere özel olarak eğitilm
 """
 
 # --- Gerekli Kütüphaneler ---
-import o
+import os
 import logging
 import json
 import io
@@ -355,5 +355,6 @@ def main():
 if __name__ == "__main__":
     Thread(target=run_flask, daemon=True).start()
     main()
+
 
 
