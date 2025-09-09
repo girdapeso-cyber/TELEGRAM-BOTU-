@@ -1,11 +1,9 @@
 # -*- coding: utf-8 -*-
 """
 Bu bot, Gemini AI entegrasyonu ile metinleri otomatik olarak iyileştirebilen ve
-fotoğraflara filigran ekleyebilen, Render platformunda 7/24 çalışmak üzere
-tasarlanmış bir içerik asistanıdır. Yapay zeka, KRBRZ VIP kanalının kimliğine
-uygun olarak, havalı bir Pro Gamer/Hacker gibi metinler üretmek üzere özel
-olarak eğitilmiştir.
-(Hedef kanal butonu ve ana aktarma fonksiyonu hataları düzeltildi.)
+YENİ: Resimleri analiz ederek sıfırdan başlık üretebilen, Render'da 7/24 çalışan
+bir içerik asistanıdır. Yapay zeka, KRBRZ VIP kanalının kimliğine uygun olarak,
+havalı bir Pro Gamer/Hacker gibi metinler üretmek üzere özel olarak eğitilmiştir.
 """
 
 # --- Gerekli Kütüphaneler ---
@@ -13,6 +11,7 @@ import os
 import logging
 import json
 import io
+import base64
 from threading import Thread
 import httpx
 from PIL import Image, ImageDraw, ImageFont
@@ -52,7 +51,8 @@ def load_config():
             "source_channels": [], 
             "destination_channels": [],
             "is_paused": False,
-            "ai_enhancement_enabled": True,
+            "ai_text_enhancement_enabled": True,
+            "ai_image_analysis_enabled": True, # YENİ
             "watermark": {
                 "text": "KRBRZ_VIP", 
                 "position": "sag-alt", 
@@ -60,7 +60,8 @@ def load_config():
                 "enabled": True
             }
         }
-    config.setdefault("ai_enhancement_enabled", True)
+    config.setdefault("ai_text_enhancement_enabled", True)
+    config.setdefault("ai_image_analysis_enabled", True) # YENİ
     config.setdefault("watermark", {
         "text": "KRBRZ_VIP", "position": "sag-alt", "color": "beyaz", "enabled": True
     })
@@ -73,10 +74,12 @@ def save_config():
     with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
         json.dump(bot_config, f, indent=4, ensure_ascii=False)
 
-# --- Yapay Zeka Fonksiyonu ---
-async def enhance_caption_with_gemini(original_caption: str) -> str:
-    if not GEMINI_API_KEY: return original_caption
-    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key={GEMINI_API_KEY}"
+# --- Yapay Zeka Fonksiyonları ---
+
+async def enhance_text_with_gemini(original_text: str) -> str:
+    """Verilen metni Gemini AI kullanarak iyileştirir."""
+    if not GEMINI_API_KEY or not original_text: return original_text
+    
     system_prompt = (
         "Sen, 'KRBRZ VIP' adında özel bir PUBG kanalının yöneticisisin. "
         "Tarzın havalı, gizemli ve profesyonel bir hacker/pro gamer gibi. "
@@ -84,21 +87,57 @@ async def enhance_caption_with_gemini(original_caption: str) -> str:
         "özel ve ayrıcalıklı bir içeriğe baktıklarını hissettirecek bir duyuruya dönüştür. "
         "Bolca teknoloji, hedef ve zafer temalı emoji kullan (👑🎯💻💀🔥💯). "
         "Kendinden emin ve meydan okuyan bir dil kullan. Mutlaka #KRBRZ_VIP, #Bypass, #PUBGhack, #Gaming, #Win gibi içeriğe uygun hashtag'ler ekle. "
-        "Metni, takipçileri daha fazlası için kanalda kalmaya teşvik eden bir eylem çağrısıyla bitir. Örneğin 'Sıradaki avı bekleyin.' veya 'KRBRZ VIP farkıyla.' gibi. "
+        "Metni, takipçileri daha fazlası için kanalda kalmaya teşvik eden bir eylem çağrısıyla bitir. "
         "Cevabın sadece ve sadece oluşturduğun yeni metin olsun, başka hiçbir açıklama ekleme."
     )
-    payload = {"contents": [{"parts": [{"text": original_caption}]}], "systemInstruction": {"parts": [{"text": system_prompt}]}}
+    
+    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key={GEMINI_API_KEY}"
+    payload = {"contents": [{"parts": [{"text": original_text}]}], "systemInstruction": {"parts": [{"text": system_prompt}]}}
+    
     try:
         async with httpx.AsyncClient(timeout=45.0) as client:
             response = await client.post(api_url, json=payload, headers={"Content-Type": "application/json"})
             response.raise_for_status()
             result = response.json()
-            enhanced_text = result["candidates"][0]["content"]["parts"][0]["text"]
-            logger.info("Metin, Gemini AI tarafından (KRBRZ VIP Modu) başarıyla iyileştirildi.")
-            return enhanced_text.strip()
+            return result["candidates"][0]["content"]["parts"][0]["text"].strip()
     except Exception as e:
-        logger.error(f"Gemini API hatası: {e}")
-        return original_caption
+        logger.error(f"Gemini Metin API hatası: {e}")
+        return original_text
+
+async def generate_caption_from_image(image_bytes: bytes) -> str:
+    """Verilen bir resmi analiz ederek Gemini AI ile başlık üretir."""
+    if not GEMINI_API_KEY: return ""
+
+    image_b64 = base64.b64encode(image_bytes).decode('utf-8')
+    
+    prompt = (
+        "Bu bir PUBG zafer ekranı. Bu resimdeki atmosfere ve olası zafer detaylarına (kill sayısı vb.) bakarak, 'KRBRZ VIP' kanalının havalı, gizemli ve profesyonel hacker/pro gamer tarzına uygun, "
+        "bol emojili (👑🎯💻💀🔥💯), #KRBRZ_VIP, #PUBG, #Win gibi hashtag'ler içeren ve takipçileri etkileşime teşvik eden bir duyuru metni oluştur. "
+        "Cevabın sadece ve sadece oluşturduğun yeni metin olsun, başka hiçbir açıklama ekleme."
+    )
+
+    api_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key={GEMINI_API_KEY}"
+    payload = {
+        "contents": [{
+            "parts": [
+                {"text": prompt},
+                {"inline_data": {"mime_type": "image/jpeg", "data": image_b64}}
+            ]
+        }]
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(api_url, json=payload, headers={"Content-Type": "application/json"})
+            response.raise_for_status()
+            result = response.json()
+            return result["candidates"][0]["content"]["parts"][0]["text"].strip()
+    except Exception as e:
+        logger.error(f"Gemini Resim API hatası: {e}")
+        return "" # Hata durumunda boş başlık döndür
+
+# --- Diğer Fonksiyonlar ---
+# (apply_watermark, admin_only, setup_command vb. önceki kodla aynı kalacak)
 
 # --- Filigran Fonksiyonu ---
 async def apply_watermark(photo_bytes: bytes) -> bytes:
@@ -145,14 +184,17 @@ SETUP_MENU, GET_SOURCE, GET_DEST, GET_WATERMARK_TEXT = range(4)
 @admin_only
 async def setup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """/ayarla komutu ile sihirbazı başlatır ve ana menüyü gösterir."""
-    ai_status = "✅ Aktif" if bot_config.get("ai_enhancement_enabled") else "❌ Pasif"
+    text_ai_status = "✅ Aktif" if bot_config.get("ai_text_enhancement_enabled") else "❌ Pasif"
+    image_ai_status = "✅ Aktif" if bot_config.get("ai_image_analysis_enabled") else "❌ Pasif"
     wm_status = f"✅ Aktif ({bot_config['watermark']['text']})" if bot_config['watermark'].get('enabled') else "❌ Pasif"
+    
     keyboard = [
         [
             InlineKeyboardButton("Kaynak Kanallar", callback_data='set_source'),
             InlineKeyboardButton("Hedef Kanallar", callback_data='set_dest')
         ],
-        [InlineKeyboardButton(f"Yapay Zeka: {ai_status}", callback_data='toggle_ai')],
+        [InlineKeyboardButton(f"Yazı Güzelleştirme: {text_ai_status}", callback_data='toggle_text_ai')],
+        [InlineKeyboardButton(f"Oto. Başlık Üretme: {image_ai_status}", callback_data='toggle_image_ai')],
         [InlineKeyboardButton(f"Filigran: {wm_status}", callback_data='set_watermark')],
         [InlineKeyboardButton("✅ Sihirbazdan Çık", callback_data='exit_setup')],
     ]
@@ -162,11 +204,8 @@ async def setup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     if update.message:
         await update.message.reply_text(message_content, reply_markup=reply_markup)
     elif update.callback_query:
-        try:
-            await update.callback_query.edit_message_text(message_content, reply_markup=reply_markup)
-        except Exception:
-            # Mesaj değişmediyse hata verir, görmezden gelip devam edebiliriz.
-            pass
+        try: await update.callback_query.edit_message_text(message_content, reply_markup=reply_markup)
+        except Exception: pass
         
     return SETUP_MENU
 
@@ -177,15 +216,17 @@ async def setup_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     data = query.data
     
     if data == 'set_source':
-        current = ", ".join(bot_config['source_channels']) or "Yok"
-        await query.edit_message_text(f"Mevcut Kaynaklar: {current}\n\nŞimdi, bu mesaja cevap olarak, dinlenecek kaynak kanalın adını yazıp gönderin (@ile).")
+        await query.edit_message_text("Dinlenecek kaynak kanalın adını yazıp gönderin (@ile).")
         return GET_SOURCE
     elif data == 'set_dest':
-        current = ", ".join(bot_config['destination_channels']) or "Yok"
-        await query.edit_message_text(f"Mevcut Hedefler: {current}\n\nŞimdi, bu mesaja cevap olarak, gönderilerin yapılacağı hedef kanalın adını yazıp gönderin.")
+        await query.edit_message_text("Gönderilerin yapılacağı hedef kanalın adını yazıp gönderin.")
         return GET_DEST
-    elif data == 'toggle_ai':
-        bot_config["ai_enhancement_enabled"] = not bot_config.get("ai_enhancement_enabled", False)
+    elif data == 'toggle_text_ai':
+        bot_config["ai_text_enhancement_enabled"] = not bot_config.get("ai_text_enhancement_enabled", False)
+        save_config()
+        return await setup_command(query, context)
+    elif data == 'toggle_image_ai':
+        bot_config["ai_image_analysis_enabled"] = not bot_config.get("ai_image_analysis_enabled", False)
         save_config()
         return await setup_command(query, context)
     elif data == 'set_watermark':
@@ -233,7 +274,7 @@ async def cancel_setup(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     await update.message.reply_text("İşlem iptal edildi.")
     return ConversationHandler.END
 
-# --- YENİLENMİŞ Ana Aktarma Fonksiyonu ---
+# --- Ana Aktarma Fonksiyonu ---
 async def forwarder(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if bot_config.get("is_paused", False): return
     message = update.channel_post
@@ -242,27 +283,37 @@ async def forwarder(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_identifier = f"@{message.chat.username}" if message.chat.username else str(message.chat.id)
     if chat_identifier not in bot_config["source_channels"]: return
 
-    original_text = message.caption or message.text or ""
-    final_text = original_text
+    final_caption = ""
+    photo_bytes = None
 
-    if bot_config.get("ai_enhancement_enabled") and original_text:
-        await context.bot.send_chat_action(chat_id=message.chat_id, action="typing")
-        final_text = await enhance_caption_with_gemini(original_text)
+    # Fotoğrafı indir
+    if message.photo:
+        file = await context.bot.get_file(message.photo[-1].file_id)
+        async with httpx.AsyncClient() as client:
+            photo_bytes = (await client.get(file.file_path)).content
 
+    # Başlığı belirle
+    if message.caption:
+        # Eğer başlık varsa, metin güzelleştirme kullanılır
+        if bot_config.get("ai_text_enhancement_enabled"):
+            await context.bot.send_chat_action(chat_id=message.chat_id, action="typing")
+            final_caption = await enhance_text_with_gemini(message.caption)
+        else:
+            final_caption = message.caption
+    elif message.photo and not message.caption:
+        # Eğer başlık yoksa ve resim varsa, otomatik başlık üretme kullanılır
+        if bot_config.get("ai_image_analysis_enabled"):
+            await context.bot.send_chat_action(chat_id=message.chat_id, action="typing")
+            final_caption = await generate_caption_from_image(photo_bytes)
+
+    # Gönderimi yap
     for dest in bot_config["destination_channels"]:
         try:
-            if message.photo:
-                file = await context.bot.get_file(message.photo[-1].file_id)
-                async with httpx.AsyncClient() as client:
-                    photo_bytes = (await client.get(file.file_path)).content
+            if photo_bytes: # Eğer bir fotoğraf işlendiyse
                 watermarked_photo = await apply_watermark(photo_bytes)
-                await context.bot.send_photo(chat_id=dest, photo=watermarked_photo, caption=final_text)
-            elif message.video:
-                await message.copy(chat_id=dest, caption=final_text)
-            elif message.text:
-                await context.bot.send_message(chat_id=dest, text=final_text)
-            else: # Diğer her şey (sticker, anket vb.)
-                await message.copy(chat_id=dest)
+                await context.bot.send_photo(chat_id=dest, photo=watermarked_photo, caption=final_caption)
+            else: # Diğer her şey
+                await message.copy(chat_id=dest, caption=final_caption if message.caption else None)
             logger.info(f"Gönderi '{dest}' kanalına başarıyla aktarıldı.")
         except Exception as e:
             logger.error(f"Aktarma hatası ({dest}): {e}")
@@ -271,7 +322,7 @@ async def forwarder(update: Update, context: ContextTypes.DEFAULT_TYPE):
 flask_app = Flask(__name__)
 @flask_app.route('/')
 def home():
-    return "Yapay zeka ve filigran destekli KRBRZ VIP bot sunucusu ayakta."
+    return "Yapay zeka (Resim Analizli) ve filigran destekli KRBRZ VIP bot sunucusu ayakta."
 
 def run_flask():
     port = int(os.environ.get('PORT', 5000))
@@ -279,7 +330,7 @@ def run_flask():
 
 # --- Botu Başlatma ---
 def main():
-    logger.info("Yapay zeka ve filigran destekli KRBRZ VIP botu başlatılıyor...")
+    logger.info("Yapay zeka (Resim Analizli) botu başlatılıyor...")
     application = Application.builder().token(BOT_TOKEN).build()
     
     conv_handler = ConversationHandler(
