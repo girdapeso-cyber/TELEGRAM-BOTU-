@@ -5,7 +5,7 @@ fotoğraflara filigran ekleyebilen, Render platformunda 7/24 çalışmak üzere
 tasarlanmış bir içerik asistanıdır. Yapay zeka, KRBRZ VIP kanalının kimliğine
 uygun olarak, havalı bir Pro Gamer/Hacker gibi metinler üretmek üzere özel
 olarak eğitilmiştir.
-(Hedef kanal butonu hatası düzeltildi.)
+(Hedef kanal butonu ve ana aktarma fonksiyonu hataları düzeltildi.)
 """
 
 # --- Gerekli Kütüphaneler ---
@@ -158,11 +158,15 @@ async def setup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    # Eğer bu bir komutla çağrıldıysa yeni mesaj gönder, butonla ise mesajı düzenle
+    message_content = "Bot ayarlarını yönetin:"
     if update.message:
-        await update.message.reply_text("Bot ayarlarını yönetin:", reply_markup=reply_markup)
+        await update.message.reply_text(message_content, reply_markup=reply_markup)
     elif update.callback_query:
-        await update.callback_query.edit_message_text("Bot ayarlarını yönetin:", reply_markup=reply_markup)
+        try:
+            await update.callback_query.edit_message_text(message_content, reply_markup=reply_markup)
+        except Exception:
+            # Mesaj değişmediyse hata verir, görmezden gelip devam edebiliriz.
+            pass
         
     return SETUP_MENU
 
@@ -183,7 +187,7 @@ async def setup_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     elif data == 'toggle_ai':
         bot_config["ai_enhancement_enabled"] = not bot_config.get("ai_enhancement_enabled", False)
         save_config()
-        return await setup_command(query, context) # Menüyü güncellemek için
+        return await setup_command(query, context)
     elif data == 'set_watermark':
         await query.edit_message_text("Yeni filigran metnini girin. Kapatmak için 'kapat' yazın.")
         return GET_WATERMARK_TEXT
@@ -203,7 +207,7 @@ async def channel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE, ch
         bot_config[config_key].append(channel)
         await update.message.reply_text(f"✅ {channel_type.capitalize()} eklendi: {channel}")
     save_config()
-    await setup_command(update, context) # Yeni mesaj olarak menüyü gönder
+    await setup_command(update, context)
     return ConversationHandler.END
     
 async def get_source_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -229,7 +233,7 @@ async def cancel_setup(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     await update.message.reply_text("İşlem iptal edildi.")
     return ConversationHandler.END
 
-# --- Ana Aktarma Fonksiyonu ---
+# --- YENİLENMİŞ Ana Aktarma Fonksiyonu ---
 async def forwarder(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if bot_config.get("is_paused", False): return
     message = update.channel_post
@@ -238,10 +242,12 @@ async def forwarder(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_identifier = f"@{message.chat.username}" if message.chat.username else str(message.chat.id)
     if chat_identifier not in bot_config["source_channels"]: return
 
-    final_caption = message.caption or ""
-    if bot_config.get("ai_enhancement_enabled") and final_caption:
+    original_text = message.caption or message.text or ""
+    final_text = original_text
+
+    if bot_config.get("ai_enhancement_enabled") and original_text:
         await context.bot.send_chat_action(chat_id=message.chat_id, action="typing")
-        final_caption = await enhance_caption_with_gemini(final_caption)
+        final_text = await enhance_caption_with_gemini(original_text)
 
     for dest in bot_config["destination_channels"]:
         try:
@@ -250,9 +256,14 @@ async def forwarder(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 async with httpx.AsyncClient() as client:
                     photo_bytes = (await client.get(file.file_path)).content
                 watermarked_photo = await apply_watermark(photo_bytes)
-                await context.bot.send_photo(chat_id=dest, photo=watermarked_photo, caption=final_caption)
-            else:
-                await message.copy(chat_id=dest, caption=final_caption)
+                await context.bot.send_photo(chat_id=dest, photo=watermarked_photo, caption=final_text)
+            elif message.video:
+                await message.copy(chat_id=dest, caption=final_text)
+            elif message.text:
+                await context.bot.send_message(chat_id=dest, text=final_text)
+            else: # Diğer her şey (sticker, anket vb.)
+                await message.copy(chat_id=dest)
+            logger.info(f"Gönderi '{dest}' kanalına başarıyla aktarıldı.")
         except Exception as e:
             logger.error(f"Aktarma hatası ({dest}): {e}")
 
@@ -280,7 +291,7 @@ def main():
             GET_WATERMARK_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_watermark_text_handler)],
         },
         fallbacks=[CommandHandler("iptal", cancel_setup)],
-        per_message=False # Bu ayar önemli
+        per_message=False
     )
     
     application.add_handler(conv_handler)
