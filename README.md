@@ -1,3 +1,12 @@
+---
+title: KRBRZ Bot İzleme
+emoji: 👁️
+colorFrom: blue
+colorTo: purple
+sdk: docker
+pinned: false
+---
+
 # KRBRZ Network Stress Tester
 
 Telegram Bot tabanlı CDN performans test sistemi. @KRBZ_VIP_TR kanalına yeni içerik düştüğünde, proxy havuzu üzerinden paralel stres testi uygular.
