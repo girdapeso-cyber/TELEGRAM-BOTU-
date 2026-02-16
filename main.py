@@ -26,19 +26,27 @@ def start_health_server():
 
 def main() -> None:
     """Bot'u yapılandırır ve başlatır."""
+    import time
+
     # Health check server'ı arka planda başlat
     health_thread = threading.Thread(target=start_health_server, daemon=True)
     health_thread.start()
 
     config = load_configuration()
-    controller = BotController(config)
-
     print("Bot başlatılıyor...")
 
-    try:
-        controller.start()
-    except KeyboardInterrupt:
-        print("\nBot kapatılıyor...")
+    while True:
+        try:
+            controller = BotController(config)
+            controller.start()
+            break
+        except KeyboardInterrupt:
+            print("\nBot kapatılıyor...")
+            break
+        except Exception as e:
+            print(f"Bot hatası: {e}")
+            print("10 saniye sonra tekrar denenecek...")
+            time.sleep(10)
 
 
 if __name__ == "__main__":
