@@ -16,7 +16,6 @@ COPY --from=builder /install /usr/local
 COPY main.py config.py ./
 COPY src/ ./src/
 
-RUN useradd --no-create-home appuser
-USER appuser
+EXPOSE 7860
 
 CMD ["python", "main.py"]
