@@ -41,7 +41,7 @@ def load_configuration() -> Configuration:
         telegram_bot_token=token,
         authorized_users=authorized_users,
         target_channel=os.getenv("TARGET_CHANNEL", "KRBZ_VIP_TR"),
-        max_threads=int(os.getenv("MAX_THREADS", "1000")),
+        max_threads=int(os.getenv("MAX_THREADS", "400")),
         proxy_api_base_url=os.getenv("PROXY_API_BASE_URL", "https://api.proxyscrape.com"),
         request_timeout=int(os.getenv("REQUEST_TIMEOUT", "2")),
         retry_delay=int(os.getenv("RETRY_DELAY", "5")),
