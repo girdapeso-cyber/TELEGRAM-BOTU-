@@ -247,13 +247,18 @@ class ThreadCoordinator:
             pass
 
         # Ekstra kullanıcı proxy'leri (user:pass@ip:port formatında)
-        extra = os.getenv("EXTRA_PROXIES", "")
-        if extra.strip():
-            for line in extra.split(","):
-                p = line.strip()
-                if p:
-                    if not p.startswith("http"):
-                        p = "http://" + p
-                    proxies.append(p)
+        extra_proxies = [
+            "http://ghofropw:n49etz1sp9i3@31.59.20.176:6754",
+            "http://ghofropw:n49etz1sp9i3@23.95.150.145:6114",
+            "http://ghofropw:n49etz1sp9i3@198.23.239.134:6540",
+            "http://ghofropw:n49etz1sp9i3@45.38.107.97:6014",
+            "http://ghofropw:n49etz1sp9i3@107.172.163.27:6543",
+            "http://ghofropw:n49etz1sp9i3@198.105.121.200:6462",
+            "http://ghofropw:n49etz1sp9i3@64.137.96.74:6641",
+            "http://ghofropw:n49etz1sp9i3@216.10.27.159:6837",
+            "http://ghofropw:n49etz1sp9i3@23.26.71.145:5628",
+            "http://ghofropw:n49etz1sp9i3@23.229.19.94:8689",
+        ]
+        proxies.extend(extra_proxies)
 
         return proxies

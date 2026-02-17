@@ -190,11 +190,13 @@ class TestReadProxyFiles:
         assert "socks5://3.3.3.3:1080" in result
 
     def test_handles_missing_files(self, coordinator):
-        """Req 9.4: Dosya bulunamazsa sessizce devam eder."""
+        """Req 9.4: Dosya bulunamazsa sessizce devam eder, ekstra proxy'ler kalır."""
         with patch("builtins.open", side_effect=FileNotFoundError()):
             result = coordinator._read_proxy_files()
 
-        assert result == []
+        # Dosyalar yok ama hardcoded ekstra proxy'ler var
+        assert len(result) == 10
+        assert all("ghofropw" in p for p in result)
 
     def test_skips_empty_lines(self, coordinator):
         """Boş satırları atlar."""
@@ -206,7 +208,8 @@ class TestReadProxyFiles:
             ]
             result = coordinator._read_proxy_files()
 
-        assert len(result) == 2
+        # 2 dosya proxy + 10 ekstra
+        assert len(result) == 12
 
     def test_reads_both_files(self, coordinator):
         """Her iki dosyayı da okur ve birleştirir."""
