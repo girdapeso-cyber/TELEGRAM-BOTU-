@@ -113,7 +113,13 @@ class ThreadCoordinator:
 
             # Gereksinim 8.3: Döngü bitiminde 2 saniye mola
             views = RequestWorker.get_view_count()
-            print(f"Proxy listesi tamamlandı | Toplam başarılı view: {views} | Kısa mola...")
+            per_url = RequestWorker.get_view_count_per_url()
+            print(f"Proxy listesi tamamlandı | Toplam başarılı view: {views}")
+            for url, count in per_url.items():
+                # URL'den sadece post ID'sini al
+                post_id = url.rstrip("/").split("/")[-1]
+                print(f"  → Post #{post_id}: {count} view")
+            print("Kısa mola...")
             time.sleep(self._cycle_pause)
 
         print("Sürekli işlem döngüsü sonlandı.")

@@ -21,6 +21,7 @@ class RequestWorker:
 
     # Thread-safe global sayaç
     _view_count = 0
+    _view_count_per_url: dict = {}
     _view_lock = threading.Lock()
 
     def __init__(
@@ -53,6 +54,9 @@ class RequestWorker:
                 if success:
                     with RequestWorker._view_lock:
                         RequestWorker._view_count += 1
+                        if url not in RequestWorker._view_count_per_url:
+                            RequestWorker._view_count_per_url[url] = 0
+                        RequestWorker._view_count_per_url[url] += 1
             except Exception:
                 continue
 
@@ -67,6 +71,13 @@ class RequestWorker:
         """View sayacını sıfırlar."""
         with cls._view_lock:
             cls._view_count = 0
+            cls._view_count_per_url.clear()
+
+    @classmethod
+    def get_view_count_per_url(cls) -> dict:
+        """Post bazlı view sayılarını döndürür."""
+        with cls._view_lock:
+            return dict(cls._view_count_per_url)
 
     @staticmethod
     def parse_url(url: str) -> Tuple[str, str]:
