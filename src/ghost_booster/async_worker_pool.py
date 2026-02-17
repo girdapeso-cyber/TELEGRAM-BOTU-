@@ -58,6 +58,7 @@ class AsyncWorkerPool:
     ) -> CycleReport:
         """Proxy havuzundan proxy alarak asenkron view task'ları çalıştırır.
 
+        Proxy'leri batch'ler halinde işler — bellek kullanımını optimize eder.
         Her worker arasına jitter ekler. Stop sinyali alındığında aktif
         task'ları iptal edip temiz şekilde kapatır.
 
@@ -86,34 +87,40 @@ class AsyncWorkerPool:
         if not proxies or not event_urls:
             return report
 
-        # Her proxy için worker task oluştur
-        tasks: list[asyncio.Task[None]] = []
-        for proxy in proxies:
+        # Batch halinde işle — bellek optimize
+        batch_size = 250
+        for batch_start in range(0, len(proxies), batch_size):
             if stop_event.is_set():
                 break
-            task = asyncio.create_task(
-                self._worker(
-                    proxy=proxy,
-                    event_urls=event_urls,
-                    semaphore=semaphore,
-                    stop_event=stop_event,
-                    on_view_success=on_view_success,
-                    report=report,
-                    view_protocol=view_protocol,
-                )
-            )
-            tasks.append(task)
 
-        # Tüm task'ların tamamlanmasını bekle
-        if tasks:
-            done, pending = await asyncio.wait(
-                tasks, return_when=asyncio.ALL_COMPLETED
-            )
-            # Stop sinyali geldiyse bekleyen task'ları iptal et
-            if stop_event.is_set() and pending:
-                for t in pending:
-                    t.cancel()
-                await asyncio.gather(*pending, return_exceptions=True)
+            batch = proxies[batch_start : batch_start + batch_size]
+            tasks: list[asyncio.Task[None]] = []
+
+            for proxy in batch:
+                if stop_event.is_set():
+                    break
+                task = asyncio.create_task(
+                    self._worker(
+                        proxy=proxy,
+                        event_urls=event_urls,
+                        semaphore=semaphore,
+                        stop_event=stop_event,
+                        on_view_success=on_view_success,
+                        report=report,
+                        view_protocol=view_protocol,
+                    )
+                )
+                tasks.append(task)
+
+            # Batch'in tamamlanmasını bekle
+            if tasks:
+                done, pending = await asyncio.wait(
+                    tasks, return_when=asyncio.ALL_COMPLETED
+                )
+                if stop_event.is_set() and pending:
+                    for t in pending:
+                        t.cancel()
+                    await asyncio.gather(*pending, return_exceptions=True)
 
         logger.info(
             "Döngü tamamlandı: %d proxy, %d başarılı, %d başarısız",
