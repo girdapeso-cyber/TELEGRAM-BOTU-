@@ -24,6 +24,24 @@ class Configuration:
     cycle_pause: int = 2
     batch_size: int = 4
 
+    # --- Ghost Booster alanları ---
+    async_concurrency_limit: int = 2000
+    health_check_timeout: float = 5.0
+    health_check_concurrency: int = 500
+    proxy_sources: list[str] = field(default_factory=list)
+    proxy_pool_critical_threshold: int = 10
+    jitter_min_ms: int = 50
+    jitter_max_ms: int = 200
+    reaction_enabled: bool = False
+    reaction_emojis: list[str] = field(default_factory=lambda: ["👏", "🔥", "❤️", "🎉", "👍"])
+    reaction_delay_min: float = 2.0
+    reaction_delay_max: float = 5.0
+    session_dir: str = "sessions"
+    session_daily_limit: int = 50
+    telegram_api_id: int = 0
+    telegram_api_hash: str = ""
+    log_level: str = "INFO"
+
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
         if not self.telegram_bot_token:
@@ -38,3 +56,23 @@ class Configuration:
             raise ValueError("cycle_pause must be non-negative")
         if self.batch_size < 1:
             raise ValueError("batch_size must be at least 1")
+
+        # Ghost Booster doğrulamaları
+        if self.async_concurrency_limit < 1:
+            raise ValueError("async_concurrency_limit must be at least 1")
+        if self.health_check_timeout <= 0:
+            raise ValueError("health_check_timeout must be greater than 0")
+        if self.health_check_concurrency < 1:
+            raise ValueError("health_check_concurrency must be at least 1")
+        if self.proxy_pool_critical_threshold < 0:
+            raise ValueError("proxy_pool_critical_threshold must be non-negative")
+        if self.jitter_min_ms < 0:
+            raise ValueError("jitter_min_ms must be non-negative")
+        if self.jitter_max_ms < self.jitter_min_ms:
+            raise ValueError("jitter_max_ms must be >= jitter_min_ms")
+        if self.reaction_delay_min < 0:
+            raise ValueError("reaction_delay_min must be non-negative")
+        if self.reaction_delay_max < self.reaction_delay_min:
+            raise ValueError("reaction_delay_max must be >= reaction_delay_min")
+        if self.session_daily_limit < 1:
+            raise ValueError("session_daily_limit must be at least 1")

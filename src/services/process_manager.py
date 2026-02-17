@@ -10,9 +10,16 @@ Gereksinimler:
     2.4: Aynı anda yalnızca bir Event için Test_Cycle çalıştırma
 """
 
+from __future__ import annotations
+
+import asyncio
 import threading
 import time
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from src.ghost_booster.async_ghost_booster import AsyncGhostBooster
+    from src.models.config import Configuration
 
 from src.models.data_models import CycleState, EventInfo
 from src.services.stop_event_controller import StopEventController
@@ -32,16 +39,29 @@ class ProcessManager:
 
     JOIN_TIMEOUT = 5
 
-    def __init__(self, thread_coordinator: ThreadCoordinator) -> None:
+    def __init__(
+        self,
+        thread_coordinator: ThreadCoordinator,
+        config: Configuration | None = None,
+    ) -> None:
         """Process manager'ı başlatır.
 
         Args:
             thread_coordinator: Paralel test döngülerini koordine eden bileşen.
+            config: Ghost Booster yapılandırması. Verilirse AsyncGhostBooster
+                    kullanılır, verilmezse eski ThreadCoordinator davranışı korunur.
         """
         self._thread_coordinator = thread_coordinator
         self._stop_controller = StopEventController()
         self._lock = threading.Lock()
         self._current_cycle: Optional[CycleState] = None
+
+        # Ghost Booster entegrasyonu (opsiyonel)
+        self._ghost_booster: AsyncGhostBooster | None = None
+        if config is not None:
+            from src.ghost_booster.async_ghost_booster import AsyncGhostBooster
+
+            self._ghost_booster = AsyncGhostBooster(config)
 
     def start_new_cycle(self, event_url: str) -> None:
         """Yeni test döngüsü başlatır (tek URL). Eski döngü varsa önce durdurur.
@@ -143,16 +163,41 @@ class ProcessManager:
     def _run_cycle(self, cycle: CycleState, event_urls: list = None) -> None:
         """Thread içinde döngüyü çalıştırır.
 
+        AsyncGhostBooster mevcutsa asyncio event loop ile çalıştırır,
+        yoksa eski ThreadCoordinator davranışına geri döner.
+
         Args:
             cycle: Çalıştırılacak döngü durumu.
             event_urls: İşlenecek URL listesi (None ise cycle.event_info.url kullanılır).
         """
         try:
             urls = event_urls if event_urls else [cycle.event_info.url]
-            self._thread_coordinator.run_continuous_cycle(
-                event_urls=urls,
-                stop_event=cycle.stop_event,
-            )
+
+            if self._ghost_booster is not None:
+                # Asyncio tabanlı Ghost Booster yolu
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    async_stop = asyncio.Event()
+
+                    async def bridge_stop():
+                        """threading.Event → asyncio.Event köprüsü."""
+                        while not cycle.stop_event.is_set():
+                            await asyncio.sleep(0.1)
+                        async_stop.set()
+
+                    loop.create_task(bridge_stop())
+                    loop.run_until_complete(
+                        self._ghost_booster.run_continuous(urls, async_stop)
+                    )
+                finally:
+                    loop.close()
+            else:
+                # Eski ThreadCoordinator yolu (geriye dönük uyumluluk)
+                self._thread_coordinator.run_continuous_cycle(
+                    event_urls=urls,
+                    stop_event=cycle.stop_event,
+                )
         finally:
             cycle.is_running = False
 
