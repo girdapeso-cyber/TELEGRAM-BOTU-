@@ -99,24 +99,21 @@ class ProcessManager:
             self._stop_cycle_unlocked()
 
     def is_cycle_running(self) -> bool:
-        """Döngü durumunu kontrol eder.
-
-        Returns:
-            True: Aktif bir döngü çalışıyorsa.
-            False: Döngü yoksa veya durmuşsa.
-        """
+        """Döngü durumunu kontrol eder."""
         with self._lock:
             if self._current_cycle is None:
                 return False
-            # Thread hala yaşıyor mu kontrol et
             if (
                 self._current_cycle.thread_handle is not None
                 and self._current_cycle.thread_handle.is_alive()
             ):
                 return True
-            # Thread bitmiş ama is_running hala True ise güncelle
             self._current_cycle.is_running = False
             return False
+
+    def update_urls(self, new_urls: list) -> None:
+        """Çalışan döngüyü durdurmadan URL listesini günceller."""
+        self._thread_coordinator.update_urls(new_urls)
 
     def _stop_cycle_unlocked(self) -> None:
         """Lock tutulurken mevcut döngüyü durdurur (internal).

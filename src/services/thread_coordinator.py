@@ -59,6 +59,15 @@ class ThreadCoordinator:
         self._proxy_scraper = proxy_scraper
         self._view_handler = view_handler
         self._cycle_pause = cycle_pause
+        self._shared_urls: List[str] = []
+        self._urls_lock = threading.Lock()
+
+    def update_urls(self, new_urls: List[str]) -> None:
+        """Çalışan döngüyü durdurmadan URL listesini günceller."""
+        with self._urls_lock:
+            self._shared_urls = list(new_urls)
+            ids = [u.rstrip("/").split("/")[-1] for u in new_urls]
+            print(f"URL listesi güncellendi → aktif postlar: {ids}")
 
     def run_continuous_cycle(
         self, event_urls: List[str], stop_event: threading.Event
@@ -78,12 +87,24 @@ class ThreadCoordinator:
             event_urls: İşlenecek event URL'lerinin listesi.
             stop_event: Thread'ler arası durdurma sinyali.
         """
+        # Başlangıç URL'lerini shared'a kopyala
+        with self._urls_lock:
+            self._shared_urls = list(event_urls)
+
         while not stop_event.is_set():
-            if event_urls:
-                if len(event_urls) > 1:
-                    print(f"{len(event_urls)} post için yeni bir izlenme döngüsü başlıyor...")
-                else:
-                    print(f"{event_urls[0]} için yeni bir izlenme döngüsü başlıyor...")
+            # Her döngü başında güncel URL listesini al
+            with self._urls_lock:
+                current_urls = list(self._shared_urls)
+
+            if not current_urls:
+                time.sleep(1)
+                continue
+
+            if len(current_urls) > 1:
+                ids = [u.rstrip("/").split("/")[-1] for u in current_urls]
+                print(f"{len(current_urls)} post için yeni bir izlenme döngüsü başlıyor... {ids}")
+            else:
+                print(f"{current_urls[0]} için yeni bir izlenme döngüsü başlıyor...")
 
             # Gereksinim 3.4: Her döngü başında proxy yenileme
             if not self._proxy_scraper.fetch_proxies():
@@ -101,25 +122,35 @@ class ThreadCoordinator:
                 break
 
             # Worker thread'leri oluştur ve başlat
-            threads = self.spawn_worker_threads(proxies, event_urls, stop_event)
+            threads = self.spawn_worker_threads(proxies, current_urls, stop_event)
 
             # Tüm thread'lerin bitmesini bekle
             self.wait_all_threads(threads)
 
             if stop_event.is_set():
-                if event_urls:
-                    print(f"Batch işlemi durduruldu ({len(event_urls)} post).")
+                if current_urls:
+                    print(f"Batch işlemi durduruldu ({len(current_urls)} post).")
                 break
 
             # Gereksinim 8.3: Döngü bitiminde 2 saniye mola
             views = RequestWorker.get_view_count()
             per_url = RequestWorker.get_view_count_per_url()
             print(f"Proxy listesi tamamlandı | Toplam başarılı view: {views}")
+            min_views = 600
+            low_posts = []
             for url, count in per_url.items():
-                # URL'den sadece post ID'sini al
                 post_id = url.rstrip("/").split("/")[-1]
-                print(f"  → Post #{post_id}: {count} view")
-            print("Kısa mola...")
+                status = "✓" if count >= min_views else "⚠ düşük"
+                print(f"  → Post #{post_id}: {count} view {status}")
+                if count < min_views:
+                    low_posts.append(url)
+
+            if low_posts and not stop_event.is_set():
+                print(f"{len(low_posts)} post henüz {min_views} view'e ulaşmadı, devam ediliyor...")
+                # Mola vermeden devam et
+                continue
+
+            print("Tüm postlar minimum view'e ulaştı. Kısa mola...")
             time.sleep(self._cycle_pause)
 
         print("Sürekli işlem döngüsü sonlandı.")
