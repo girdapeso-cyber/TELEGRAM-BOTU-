@@ -43,9 +43,9 @@ def load_configuration() -> Configuration:
         target_channel=os.getenv("TARGET_CHANNEL", "KRBZ_VIP_TR"),
         max_threads=int(os.getenv("MAX_THREADS", "400")),
         proxy_api_base_url=os.getenv("PROXY_API_BASE_URL", "https://api.proxyscrape.com"),
-        request_timeout=int(os.getenv("REQUEST_TIMEOUT", "10")),
+        request_timeout=int(os.getenv("REQUEST_TIMEOUT", "5")),
         retry_delay=int(os.getenv("RETRY_DELAY", "5")),
-        cycle_pause=int(os.getenv("CYCLE_PAUSE", "2")),
+        cycle_pause=int(os.getenv("CYCLE_PAUSE", "0")),
     )
 
 
