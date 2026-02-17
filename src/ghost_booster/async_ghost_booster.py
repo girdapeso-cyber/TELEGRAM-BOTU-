@@ -37,6 +37,8 @@ class AsyncGhostBooster:
 
     def __init__(self, config: Configuration) -> None:
         self._config = config
+        self._refill_lock = asyncio.Lock()
+        self._refill_task: asyncio.Task[None] | None = None
 
         # Loglama seviyesini yapılandır
         logging.getLogger("src.ghost_booster").setLevel(
@@ -153,13 +155,20 @@ class AsyncGhostBooster:
         await self._refill_pool()
 
         while not stop_event.is_set():
-            # Havuz boş veya kritik → yeniden doldur
-            if self._pool.is_empty() or self._pool.is_critical():
+            # Havuz tamamen boş → senkron refill (bekle)
+            if self._pool.is_empty():
                 logger.info(
-                    "Proxy havuzu kritik (kalan: %d), yeniden dolduruluyor...",
-                    self._pool.size(),
+                    "Proxy havuzu boş, yeniden dolduruluyor..."
                 )
                 await self._refill_pool()
+            elif self._pool.is_critical():
+                # Kritik ama boş değil → arka planda refill başlat, döngüye devam et
+                if self._refill_task is None or self._refill_task.done():
+                    logger.info(
+                        "Proxy havuzu kritik (kalan: %d), arka planda dolduruluyor...",
+                        self._pool.size(),
+                    )
+                    self._refill_task = asyncio.create_task(self._refill_pool())
 
             # Hâlâ boşsa tüm kaynaklar başarısız demektir → retry_delay bekle (Req 8.2)
             if self._pool.is_empty():
@@ -205,34 +214,43 @@ class AsyncGhostBooster:
     async def _refill_pool(self) -> None:
         """Proxy havuzunu yeniden doldurur (hunt → check → load).
 
+        Lock ile eşzamanlı refill'i önler.
         Req 9.2: kaynak bazlı istatistikler (hunter içinde loglanır)
         Req 9.3: sağlık kontrolü istatistikleri (checker içinde loglanır)
         """
-        logger.info("Proxy havuzu yeniden dolduruluyor...")
+        async with self._refill_lock:
+            logger.info("Proxy havuzu yeniden dolduruluyor...")
 
-        # 1. Proxy topla
-        raw_proxies = await self._hunter.hunt_all()
-        if not raw_proxies:
-            logger.warning("Hiç proxy toplanamadı")
-            return
+            # 1. Proxy topla
+            raw_proxies = await self._hunter.hunt_all()
+            if not raw_proxies:
+                logger.warning("Hiç proxy toplanamadı")
+                return
 
-        # 2. Sağlık kontrolü
-        healthy_proxies = await self._checker.check_all(raw_proxies)
-        if not healthy_proxies:
-            logger.warning("Sağlık kontrolünden geçen proxy yok")
-            return
+            # 2. Sağlık kontrolü
+            healthy_proxies = await self._checker.check_all(raw_proxies)
+            if not healthy_proxies:
+                logger.warning("Sağlık kontrolünden geçen proxy yok")
+                return
 
-        # 3. Havuza yükle
-        self._pool.load(healthy_proxies)
-        logger.info(
-            "Havuz dolduruldu: %d sağlıklı proxy (toplam havuz: %d)",
-            len(healthy_proxies),
-            self._pool.size(),
-        )
+            # 3. Havuza yükle
+            self._pool.load(healthy_proxies)
+            logger.info(
+                "Havuz dolduruldu: %d sağlıklı proxy (toplam havuz: %d)",
+                len(healthy_proxies),
+                self._pool.size(),
+            )
 
     async def _shutdown(self) -> None:
-        """Temiz kapatma — oturumları kapat."""
+        """Temiz kapatma — bekleyen refill task'ını iptal et, oturumları kapat."""
         logger.info("AsyncGhostBooster kapatılıyor...")
+        # Arka plan refill task'ını iptal et
+        if self._refill_task is not None and not self._refill_task.done():
+            self._refill_task.cancel()
+            try:
+                await self._refill_task
+            except (asyncio.CancelledError, Exception):
+                pass
         if self._session_manager is not None:
             await self._session_manager.close_all()
         logger.info("AsyncGhostBooster kapatıldı")

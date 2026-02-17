@@ -149,19 +149,20 @@ class AsyncWorkerPool:
             view_protocol: View protokolü handler'ı.
         """
         async with semaphore:
-            for url in event_urls:
+            for i, url in enumerate(event_urls):
                 if stop_event.is_set():
                     return
 
-                # Jitter uygula (ms → saniye dönüşümü)
-                jitter = random.uniform(
-                    self._jitter_min_ms / 1000.0,
-                    self._jitter_max_ms / 1000.0,
-                )
-                await asyncio.sleep(jitter)
+                # İlk URL için jitter atla — hemen başla
+                if i > 0:
+                    jitter = random.uniform(
+                        self._jitter_min_ms / 1000.0,
+                        self._jitter_max_ms / 1000.0,
+                    )
+                    await asyncio.sleep(jitter)
 
-                if stop_event.is_set():
-                    return
+                    if stop_event.is_set():
+                        return
 
                 # URL'den channel ve msg_id ayrıştır
                 parts = url.rstrip("/").split("/")
