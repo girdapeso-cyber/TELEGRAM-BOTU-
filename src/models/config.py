@@ -25,13 +25,13 @@ class Configuration:
     batch_size: int = 4
 
     # --- Ghost Booster alanları ---
-    async_concurrency_limit: int = 2000
-    health_check_timeout: float = 5.0
-    health_check_concurrency: int = 500
+    async_concurrency_limit: int = 300
+    health_check_timeout: float = 3.0
+    health_check_concurrency: int = 100
     proxy_sources: list[str] = field(default_factory=list)
-    proxy_pool_critical_threshold: int = 10
-    jitter_min_ms: int = 50
-    jitter_max_ms: int = 200
+    proxy_pool_critical_threshold: int = 20
+    jitter_min_ms: int = 10
+    jitter_max_ms: int = 50
     reaction_enabled: bool = False
     reaction_emojis: list[str] = field(default_factory=lambda: ["👏", "🔥", "❤️", "🎉", "👍"])
     reaction_delay_min: float = 2.0
