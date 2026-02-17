@@ -220,16 +220,12 @@ class ThreadCoordinator:
             thread.join()
 
     def _read_proxy_files(self) -> List[str]:
-        """Proxy dosyalarını okur ve birleşik proxy listesi döndürür.
+        """Proxy dosyalarını ve ekstra proxy'leri okur.
 
-        proxies.txt'den HTTP/HTTPS proxy'leri, socks.txt'den SOCKS5
-        proxy'leri okunur. SOCKS5 proxy'lere "socks5://" prefix eklenir.
-
-        Gereksinim 9.4: Dosya bulunamazsa hatayı yoksayıp devam etme.
-
-        Returns:
-            Tüm proxy adreslerinin birleşik listesi.
+        proxies.txt'den HTTP/HTTPS, socks.txt'den SOCKS5,
+        ve EXTRA_PROXIES env'den kullanıcı proxy'leri okunur.
         """
+        import os
         proxies: List[str] = []
 
         try:
@@ -249,5 +245,15 @@ class ThreadCoordinator:
                         proxies.append("socks5://" + proxy)
         except FileNotFoundError:
             pass
+
+        # Ekstra kullanıcı proxy'leri (user:pass@ip:port formatında)
+        extra = os.getenv("EXTRA_PROXIES", "")
+        if extra.strip():
+            for line in extra.split(","):
+                p = line.strip()
+                if p:
+                    if not p.startswith("http"):
+                        p = "http://" + p
+                    proxies.append(p)
 
         return proxies
