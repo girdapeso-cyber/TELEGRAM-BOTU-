@@ -246,7 +246,7 @@ class ThreadCoordinator:
         except FileNotFoundError:
             pass
 
-        # Ekstra kullanıcı proxy'leri (user:pass@ip:port formatında)
+        # Ekstra kullanıcı proxy'leri - premium olduğu için 3 kez tekrarla
         extra_proxies = [
             "http://ghofropw:n49etz1sp9i3@31.59.20.176:6754",
             "http://ghofropw:n49etz1sp9i3@23.95.150.145:6114",
@@ -259,6 +259,7 @@ class ThreadCoordinator:
             "http://ghofropw:n49etz1sp9i3@23.26.71.145:5628",
             "http://ghofropw:n49etz1sp9i3@23.229.19.94:8689",
         ]
-        proxies.extend(extra_proxies)
+        for _ in range(3):
+            proxies.extend(extra_proxies)
 
         return proxies
