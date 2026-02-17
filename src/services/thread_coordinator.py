@@ -259,7 +259,7 @@ class ThreadCoordinator:
             "http://ghofropw:n49etz1sp9i3@23.26.71.145:5628",
             "http://ghofropw:n49etz1sp9i3@23.229.19.94:8689",
         ]
-        for _ in range(3):
+        for _ in range(5):
             proxies.extend(extra_proxies)
 
         return proxies

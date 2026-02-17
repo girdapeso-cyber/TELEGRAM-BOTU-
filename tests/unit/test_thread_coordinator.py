@@ -194,8 +194,8 @@ class TestReadProxyFiles:
         with patch("builtins.open", side_effect=FileNotFoundError()):
             result = coordinator._read_proxy_files()
 
-        # Dosyalar yok ama hardcoded ekstra proxy'ler var (10 proxy x 3 tekrar)
-        assert len(result) == 30
+        # Dosyalar yok ama hardcoded ekstra proxy'ler var (10 proxy x 5 tekrar)
+        assert len(result) == 50
         assert all("ghofropw" in p for p in result)
 
     def test_skips_empty_lines(self, coordinator):
@@ -208,8 +208,8 @@ class TestReadProxyFiles:
             ]
             result = coordinator._read_proxy_files()
 
-        # 2 dosya proxy + 30 ekstra (10x3)
-        assert len(result) == 32
+        # 2 dosya proxy + 50 ekstra (10x5)
+        assert len(result) == 52
 
     def test_reads_both_files(self, coordinator):
         """Her iki dosyayı da okur ve birleştirir."""
